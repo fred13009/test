@@ -6,6 +6,10 @@ st.title('Advertising Budget Allocator')
 def optimize_budget(ad_channels, total_budget, use_channel_exposure_constraint, min_channels_used):
     # The optimize_budget function definition goes here. (Same as previously provided)
 
+    # ...
+
+    return allocated_budget, optimal_revenue, even_revenue, optimal_channels_used
+
 # Form to get user inputs
 with st.form(key='input_form'):
     # Get user input for the total budget
