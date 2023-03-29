@@ -2,9 +2,51 @@ import streamlit as st
 import pulp
 
 def optimize_budget(ad_channels, total_budget, use_channel_exposure_constraint, min_channels_used):
-    # ... (the rest of the script logic goes here, excluding user inputs)
+    # Create the LP problem
+    prob = pulp.LpProblem("AdvertisingBudgetAllocation", pulp.LpMaximize)
+
+    # Define the decision variables
+    allocations = pulp.LpVariable.dicts("alloc", ad_channels.keys(), lowBound=0, cat="Continuous")
+    channel_used = pulp.LpVariable.dicts("used", ad_channels.keys(), cat="Binary")
+
+    # Define the objective function (maximize the total revenue)
+    prob += pulp.lpSum([allocations[channel] * data["return_on_investment"] for channel, data in ad_channels.items()])
+
+    # Add the total budget constraint
+    prob += pulp.lpSum([allocations[channel] for channel in ad_channels.keys()]) <= total_budget
+
+    # Add the channel-specific minimum and maximum budget constraints
+    for channel, data in ad_channels.items():
+        if data["min_budget"] is not None:
+            prob += allocations[channel] >= data["min_budget"]
+        if data["max_budget"] is not None:
+            prob += allocations[channel] <= data["max_budget"]
+
+    # Add the channel-specific minimum revenue constraints
+    for channel, data in ad_channels.items():
+        if data["min_revenue"] is not None:
+            prob += allocations[channel] * data["return_on_investment"] >= data["min_revenue"]
+
+    # Add the channel exposure constraint (minimum number of channels used)
+    if use_channel_exposure_constraint == "yes":
+        prob += pulp.lpSum([channel_used[channel] for channel in ad_channels.keys()]) >= min_channels_used
+
+        # Link the binary decision variables to the corresponding allocation variables
+        for channel in ad_channels.keys():
+            prob += allocations[channel] <= channel_used[channel] * total_budget
+
+    # Solve the problem
+    prob.solve()
+
+    # Get the optimal allocation and calculate the revenues
+    allocated_budget = {channel: pulp.value(allocations[channel]) for channel in ad_channels.keys()}
+    optimal_revenue = sum([allocated_budget[channel] * ad_channels[channel]["return_on_investment"] for channel in ad_channels.keys()])
+    even_budget = total_budget / len(ad_channels)
+    even_revenue = sum([even_budget * ad_channels[channel]["return_on_investment"] for channel in ad_channels.keys()])
+    optimal_channels_used = sum([1 for channel in ad_channels.keys() if allocated_budget[channel] > 0])
 
     return allocated_budget, optimal_revenue, even_revenue, optimal_channels_used
+
 
 st.title('Advertising Budget Allocator')
 
