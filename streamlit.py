@@ -34,10 +34,10 @@ def channel_input_form(channel_number):
     channel_name = st.text_input(f"Channel {channel_number} Name:", key=f"channel_{channel_number}_name")
     historical_roas = st.number_input(f"Channel {channel_number} Historical ROAS:", min_value=0.0, value=1.0, step=0.1, format="%.1f", key=f"channel_{channel_number}_roas")
 
-    min_budget = st.number_input(f"Channel {channel_number} Minimum Budget (Optional):", min_value=0, value=0, step=1, format="%d", key=f"channel_{channel_number}_min_budget")
-    max_budget = st.number_input(f"Channel {channel_number} Maximum Budget (Optional):", min_value=min_budget, value=1000, step=1, format="%d", key=f"channel_{channel_number}_max_budget")
+    min_budget = st.number_input(f"Channel {channel_number} Minimum Budget (Optional):", min_value=0, value=None, step=1, format="%d", key=f"channel_{channel_number}_min_budget")
+    max_budget = st.number_input(f"Channel {channel_number} Maximum Budget (Optional):", min_value=0, value=None, step=1, format="%d", key=f"channel_{channel_number}_max_budget")
 
-    min_revenue = st.number_input(f"Channel {channel_number} Minimum Revenue (Optional):", min_value=0, value=0, step=1, format="%d", key=f"channel_{channel_number}_min_revenue")
+    min_revenue = st.number_input(f"Channel {channel_number} Minimum Revenue (Optional):", min_value=0, value=None, step=1, format="%d", key=f"channel_{channel_number}_min_revenue")
 
     return {
         "name": channel_name,
@@ -46,6 +46,7 @@ def channel_input_form(channel_number):
         "max_budget": max_budget if max_budget > 0 else None,
         "min_revenue": min_revenue if min_revenue > 0 else None,
     }
+
 
 if "next_step_channels" in st.session_state and st.session_state.next_step_channels:
     st.markdown("---")
