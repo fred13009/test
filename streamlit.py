@@ -45,17 +45,19 @@ if "next_step" in st.session_state and st.session_state.next_step:
     if "num_channels" not in st.session_state:
         st.session_state.num_channels = 2
 
-    channels = []
-    for i in range(1, st.session_state.num_channels + 1):
-        channel = channel_input_form(i)
-        channels.append(channel)
+    with st.form("channels_form"):
+        channels = []
+        for i in range(1, st.session_state.num_channels + 1):
+            channel = channel_input_form(i)
+            channels.append(channel)
 
-    # Run Calculation button (Main Call to Action)
-    if st.button("Run Calculation"):
-        st.session_state.channels = channels
-        st.session_state.calculate = True
+        # Run Calculation button (Main Call to Action)
+        if st.form_submit_button("Run Calculation"):
+            st.session_state.channels = channels
+            st.session_state.calculate = True
 
-    # Add New Channels button (Optional Action)
-    if st.button("Add New Channels"):
-        new_channels = st.number_input("How many new channels do you want to add?", min_value=1, max_value=(10 - st.session_state.num_channels), value=1, step=1, format="%d")
-        st.session_state.num_channels += new_channels
+        # Add New Channels button (Optional Action)
+        if st.form_submit_button("Add New Channels"):
+            new_channels = st.number_input("How many new channels do you want to add?", min_value=1, max_value=(10 - st.session_state.num_channels), value=1, step=1, format="%d")
+            st.session_state.num_channels += new_channels
+            st.form_submit_button("Update Channels")
