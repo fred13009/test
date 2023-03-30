@@ -56,8 +56,7 @@ if "next_step" in st.session_state and st.session_state.next_step:
             st.session_state.channels = channels
             st.session_state.calculate = True
 
-        # Add New Channels button (Optional Action)
-        if st.form_submit_button("Add New Channels"):
-            new_channels = st.number_input("How many new channels do you want to add?", min_value=1, max_value=(10 - st.session_state.num_channels), value=1, step=1, format="%d")
-            st.session_state.num_channels += new_channels
-            st.form_submit_button("Update Channels")
+    # Add New Channels button (Optional Action)
+    new_channels = st.number_input("How many new channels do you want to add?", min_value=1, max_value=(10 - st.session_state.num_channels), value=1, step=1, format="%d")
+    if st.button("Add New Channels"):
+        st.session_state.num_channels += new_channels
