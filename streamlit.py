@@ -93,7 +93,7 @@ def optimize_budget_allocation(channels, overall_budget, channel_exposure_constr
         if channel["max_budget"]:
             problem += budget_vars[i] <= channel["max_budget"] * exposure_vars[i]
         else:
-    problem += budget_vars[i] <= overall_budget * exposure_vars[i]
+            problem += budget_vars[i] <= overall_budget * exposure_vars[i]
 
         # Revenue constraint
         if channel["min_revenue"]:
