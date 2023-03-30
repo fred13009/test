@@ -40,7 +40,7 @@ def main():
     st.subheader("Channel Information")
     n_channels = st.number_input("Number of channels", min_value=2, value=2)
 
-        channels = []
+    channels = []
 
     for i in range(n_channels):
         st.subheader(f"Channel {i + 1}")
