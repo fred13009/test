@@ -42,17 +42,17 @@ def channel_input_form(channel_number):
 
 if "next_step" in st.session_state and st.session_state.next_step:
     st.markdown("---")
-    st.header("Marketing Channels")
+    st.header("How many channels do you want to cover?")
+    st.session_state.num_channels = st.number_input("Number of channels:", min_value=2, max_value=10, value=2, step=1, format="%d")
 
-    if "num_channels" not in st.session_state:
-        st.session_state.num_channels = 2
+    if st.button("Next Step Channels"):
+        st.session_state.next_step_channels = True
+
+if "next_step_channels" in st.session_state and st.session_state.next_step_channels:
+    st.markdown("---")
+    st.header("Marketing Channels")
 
     channels = []
     for i in range(1, st.session_state.num_channels + 1):
         channel = channel_input_form(i)
         channels.append(channel)
-
-    # Add New Channels button
-    new_channels = st.number_input("How many new channels do you want to add?", min_value=1, max_value=(10 - st.session_state.num_channels), value=1, step=1, format="%d")
-    if st.button("Add New Channels"):
-        st.session_state.num_channels += new_channels
