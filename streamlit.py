@@ -21,11 +21,9 @@ if st.button("Next Step"):
     st.session_state.channel_exposure_constraint = channel_exposure_constraint
     st.session_state.next_step = True
 
-# Start of the second part
-
 def channel_input_form(channel_number):
     channel_name = st.text_input(f"Channel {channel_number} Name:", key=f"channel_{channel_number}_name")
-    historical_roas = st.number_input(f"Channel {channel_number} Historical ROAS (%):", min_value=0.0, value=100.0, step=0.1, format="%.1f", key=f"channel_{channel_number}_roas")
+    historical_roas = st.number_input(f"Channel {channel_number} Historical ROAS:", min_value=0.0, value=1.0, step=0.1, format="%.1f", key=f"channel_{channel_number}_roas")
 
     min_budget = st.number_input(f"Channel {channel_number} Minimum Budget (Optional):", min_value=0, value=0, step=1, format="%d", key=f"channel_{channel_number}_min_budget")
     max_budget = st.number_input(f"Channel {channel_number} Maximum Budget (Optional):", min_value=min_budget, value=1000, step=1, format="%d", key=f"channel_{channel_number}_max_budget")
@@ -52,7 +50,12 @@ if "next_step" in st.session_state and st.session_state.next_step:
         channel = channel_input_form(i)
         channels.append(channel)
 
-    # Add New Channels button
+    # Run Calculation button (Main Call to Action)
+    if st.button("Run Calculation"):
+        st.session_state.channels = channels
+        st.session_state.calculate = True
+
+    # Add New Channels button (Optional Action)
     if st.button("Add New Channels"):
         new_channels = st.number_input("How many new channels do you want to add?", min_value=1, max_value=(10 - st.session_state.num_channels), value=1, step=1, format="%d")
         st.session_state.num_channels += new_channels
