@@ -1,86 +1,77 @@
 import streamlit as st
+import pandas as pd
 import pulp
 
-st.title('Advertising Budget Allocator')
+def allocate_budget(channels, budget, min_channels):
+    prob = pulp.LpProblem("BudgetAllocation", pulp.LpMaximize)
 
-
-def optimize_budget(ad_channels, total_budget, use_channel_exposure_constraint, min_channels_used):
-    # Problem definition
-    problem = pulp.LpProblem("Budget_Allocation", pulp.LpMaximize)
-
-    # Variables
-    budget_vars = pulp.LpVariable.dicts("budget", ad_channels, lowBound=0, cat="Continuous")
+    x = [pulp.LpVariable(f'x{i}', channel['min_budget'] or 0, channel['max_budget']) for i, channel in enumerate(channels)]
+    revenue = [channel['ROAS'] * x_i for channel, x_i in zip(channels, x)]
 
     # Objective function
-    problem += pulp.lpSum([budget_vars[channel] * ad_channels[channel]['return_on_investment'] for channel in ad_channels])
+    prob += pulp.lpSum(revenue)
 
-    # Constraints
-    problem += pulp.lpSum([budget_vars[channel] for channel in ad_channels]) <= total_budget
+    # Budget constraint
+    prob += pulp.lpSum(x) <= budget, "TotalBudget"
 
-    for channel in ad_channels:
-        if ad_channels[channel]['min_budget'] is not None:
-            problem += budget_vars[channel] >= ad_channels[channel]['min_budget']
-        if ad_channels[channel]['max_budget'] is not None:
-            problem += budget_vars[channel] <= ad_channels[channel]['max_budget']
+    # Channel exposure constraint
+    prob += pulp.lpSum([pulp.lpBinaryVar(f'y{i}') for i, channel in enumerate(channels)]) >= min_channels, "ChannelExposure"
+    for i, channel in enumerate(channels):
+        prob += x[i] - channel['min_budget'] * pulp.lpBinaryVar(f'y{i}') >= 0, f"MinBudget{i}"
 
-    if use_channel_exposure_constraint:
-        problem += pulp.lpSum([pulp.lpSum([budget_vars[channel] >= 0.0001]) for channel in ad_channels]) >= min_channels_used
+    # Minimum revenue constraint
+    for i, channel in enumerate(channels):
+        if channel['min_revenue']:
+            prob += x[i] * channel['ROAS'] >= channel['min_revenue'], f"MinRevenue{i}"
 
-    # Solve the problem
-    problem.solve()
+    status = prob.solve()
 
-    # Collect the results
-    allocated_budget = {channel: budget_vars[channel].varValue for channel in ad_channels}
-    optimal_revenue = pulp.value(problem.objective)
-    even_revenue = sum([(total_budget / len(ad_channels)) * ad_channels[channel]['return_on_investment'] for channel in ad_channels])
-    optimal_channels_used = sum([1 for channel in ad_channels if allocated_budget[channel] > 0])
+    if status != 1:
+        st.warning("Optimal solution not found. Please adjust your constraints.")
+        return None
 
-    return allocated_budget, optimal_revenue, even_revenue, optimal_channels_used
+    return [pulp.value(x_i) for x_i in x]
 
+def main():
+    st.title("Advertising Budget Allocation")
+    budget = st.number_input("Overall budget", min_value=0, value=1000)
+    min_channels = st.number_input("Minimum number of channels (optional)", min_value=1, value=None, key='min_channels')
 
-# Form to get user inputs
-with st.form(key='input_form'):
-    # Get user input for the total budget
-    total_budget = st.number_input("Enter the total advertising budget:", value=1000.0, step=100.0, format="%.2f")
+    st.subheader("Channel Information")
+    n_channels = st.number_input("Number of channels", min_value=2, value=2)
 
-    # Get user input for the number of channels
-    num_channels = st.number_input("Enter the number of advertising channels:", value=1, step=1, min_value=1, format="%d")
+        channels = []
 
-    # Create a placeholder for the input fields
-    channel_inputs_placeholder = st.empty()
+    for i in range(n_channels):
+        st.subheader(f"Channel {i + 1}")
+        name = st.text_input("Name", value=f"Channel {i + 1}", key=f"name{i}")
+        ROAS = st.number_input("Historical ROAS", min_value=0.0, value=1.0, key=f"ROAS{i}")
+        min_budget = st.number_input("Minimum budget constraint (optional)", min_value=0, value=None, key=f"min_budget{i}")
+        max_budget = st.number_input("Maximum budget constraint (optional)", min_value=0, value=None, key=f"max_budget{i}")
+        min_revenue = st.number_input("Minimum revenue constraint (optional)", min_value=0, value=None, key=f"min_revenue{i}")
 
-    # Get user input for channel details
-ad_channels = {}
-for i in range(num_channels):
-    with st.container():
-        st.write(f"Channel {i + 1}:")
-        channel_name = st.text_input(f"Enter the name of channel {i + 1}:", key=f"channel_name_{i}")
-        return_on_investment = st.number_input(f"Enter the return on investment (ROI) for {channel_name}:", value=1.0, step=0.01, format="%.2f", key=f"roi_{i}")
-        min_revenue = st.number_input(f"Enter the minimum revenue constraint for {channel_name} (leave blank for none):", value=-1, key=f"min_revenue_{i}")
-        min_budget = st.number_input(f"Enter the minimum budget constraint for {channel_name} (leave blank for none):", value=-1, key=f"min_budget_{i}")
-        max_budget = st.number_input(f"Enter the maximum budget constraint for {channel_name} (leave blank for none):", value=-1, key=f"max_budget_{i}")
+        channels.append({
+            'name': name,
+            'ROAS': ROAS,
+            'min_budget': min_budget,
+            'max_budget': max_budget,
+            'min_revenue': min_revenue
+        })
 
-        ad_channels[channel_name] = {
-            "return_on_investment": return_on_investment,
-            "min_revenue": min_revenue if min_revenue != -1 else None,
-            "min_budget": min_budget if min_budget != -1 else None,
-            "max_budget": max_budget if max_budget != -1 else None,
-        }
+    if st.button("Submit for calculation"):
+        if min_channels is None:
+            min_channels = 1
 
-# Get user input for the optional channel exposure constraint
-use_channel_exposure_constraint = st.radio("Do you want to use a channel exposure constraint?", ("No", "Yes"))
-if use_channel_exposure_constraint == "Yes":
-    min_channels_used = st.number_input("Enter the minimum number of channels to be used:", value=1, step=1, min_value=1, format="%d")
-else:
-    min_channels_used = 0
+        allocation = allocate_budget(channels, budget, min_channels)
 
-submit_button = st.form_submit_button("Submit Constraints")
+        if allocation is not None:
+            st.subheader("Budget Allocation")
+            for name, alloc in zip([c['name'] for c in channels], allocation):
+                st.write(f"{name}: {alloc:.2f}")
 
-if submit_button:
-    allocated_budget, optimal_revenue, even_revenue, optimal_channels_used = optimize_budget(ad_channels, total_budget, use_channel_exposure_constraint, min_channels_used)
+            st.subheader("Overall Revenue")
+            st.write(f"Expected: {sum([c['ROAS'] * alloc for c, alloc in zip(channels, allocation)]):.2f}")
+            st.write(f"Even Split: {sum([c['ROAS'] * (budget / n_channels) for c in channels]):.2f}")
 
-    # Display the results
-    st.write("Optimal Allocation:", allocated_budget)
-    st.write("Expected Revenue from Optimal Allocation:", optimal_revenue)
-    st.write("Revenue from Even Budget Allocation:", even_revenue)
-    st.write("Number of Channels Used in Optimal Allocation:", optimal_channels_used)
+if __name__ == '__main__':
+    main()
