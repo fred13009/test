@@ -22,7 +22,13 @@ if st.button("Next Step"):
     st.session_state.channel_exposure_constraint = channel_exposure_constraint
     st.session_state.next_step = True
 
-# Start of the second part
+if "next_step" in st.session_state and st.session_state.next_step:
+    st.markdown("---")
+    st.header("How many channels do you want to cover?")
+    st.session_state.num_channels = st.number_input("Number of channels:", min_value=2, max_value=10, value=2, step=1, format="%d")
+
+    if st.button("Next Step Channels"):
+        st.session_state.next_step_channels = True
 
 def channel_input_form(channel_number):
     channel_name = st.text_input(f"Channel {channel_number} Name:", key=f"channel_{channel_number}_name")
@@ -41,69 +47,71 @@ def channel_input_form(channel_number):
         "min_revenue": min_revenue if min_revenue > 0 else None,
     }
 
-if "next_step" in st.session_state and st.session_state.next_step:
+if "next_step_channels" in st.session_state and st.session_state.next_step_channels:
     st.markdown("---")
     st.header("Marketing Channels")
-
-    if "num_channels" not in st.session_state:
-        st.session_state.num_channels = 2
 
     channels = []
     for i in range(1, st.session_state.num_channels + 1):
         channel = channel_input_form(i)
         channels.append(channel)
 
-    # Add New Channels button
-    if st.button("Add New Channels"):
-        new_channels = st.number_input("How many new channels do you want to add?", min_value=1, max_value=(10 - st.session_state.num_channels), value=1, step=1, format="%d")
-        st.session_state.num_channels += new_channels
+    # Next step to run the optimization
+    if st.button("Run Optimization"):
+        st.session_state.channels = channels
+        st.session_state.run_optimization = True
 
-    # Budget optimization part
+# Budget optimization part
 
-    def optimize_budget_allocation(channels, overall_budget, channel_exposure_constraint):
-        num_channels = len(channels)
+def optimize_budget_allocation(channels, overall_budget, channel_exposure_constraint):
+    num_channels = len(channels)
 
-        # Create the LP problem
-        problem = pulp.LpProblem("BudgetAllocation", pulp.LpMaximize)
+    # Create the LP problem
+    problem = pulp.LpProblem("Budget Allocation", pulp.LpMaximize)
 
-        # Create decision variables
-        budgets = [pulp.LpVariable(f"budget_{i}", 0, None, pulp.LpContinuous) for i in range(num_channels)]
+    # Create variables
+    budget_vars = pulp.LpVariable.dicts("Budget", [i for i in range(num_channels)], lowBound=0)
+    exposure_vars = pulp.LpVariable.dicts("Exposure", [i for i in range(num_channels)], cat="Binary")
 
-        # Create objective function
-        problem += pulp.lpSum([budgets[i] * channels[i]['roas'] for i in range(num_channels)])
+    # Set the objective function
+    problem += pulp.lpSum([channels[i]["roas"] * budget_vars[i] for i in range(num_channels)])
 
-        # Add constraints
-        for i, channel in enumerate(channels):
-            min_budget = channel['min_budget'] or 0
-            max_budget = channel['max_budget'] or overall_budget
-            problem += budgets[i] >= min_budget
-            problem += budgets[i] <= max_budget
+    # Set the budget constraint
+    problem += pulp.lpSum([budget_vars[i] for i in range(num_channels)]) <= overall_budget
 
-        # Total budget constraint
-        problem += pulp.lpSum(budgets) <= overall_budget
+    # Set the channel exposure constraint, if specified
+    if channel_exposure_constraint:
+        problem += pulp.lpSum([exposure_vars[i] for i in range(num_channels)]) >= channel_exposure_constraint
 
-        # Channel exposure constraint
-        if channel_exposure_constraint is not None:
-            problem += pulp.lpSum([pulp.LpIndicator(budgets[i] > 0) for i in range(num_channels)]) >= channel_exposure_constraint
+    # Set the individual channel constraints
+    for i in range(num_channels):
+        channel = channels[i]
 
-        # Solve the problem
-        problem.solve()
+        # Budget constraints
+        if channel["min_budget"]:
+            problem += budget_vars[i] >= channel["min_budget"] * exposure_vars[i]
+        if channel["max_budget"]:
+            problem += budget_vars[i] <= channel["max_budget"] * exposure_vars[i]
 
-        # Check if the problem has an optimal solution
-        if problem.status != pulp.LpStatusOptimal:
-            return None
+        # Revenue constraint
+        if channel["min_revenue"]:
+            problem += budget_vars[i] * channel["roas"] >= channel["min_revenue"] * exposure_vars[i]
 
-        # Extract the optimal budget allocation
-        optimal_budgets = [budgets[i].value() for i in range(num_channels)]
+    # Solve the problem
+    problem.solve()
 
-        return optimal_budgets
+    # Get the optimized budget allocation
+    optimized_allocation = [{"name": channels[i]["name"], "budget": budget_vars[i].value()} for i in range(num_channels)]
 
-    if st.button("Run Calculation"):
-        optimal_budgets = optimize_budget_allocation(channels, st.session_state.overall_budget, st.session_state.channel_exposure_constraint)
+    return optimized_allocation
 
-        if optimal_budgets is None:
-            st.error("The problem has no optimal solution. Please review your constraints.")
-        else:
-            st.header("Optimal Budget Allocation")
-            for i, channel in enumerate(channels):
-                st.write(f"{channel['name']}: ${optimal_budgets[i]:.2f}")
+# Run the optimization
+if "run_optimization" in st.session_state and st.session_state.run_optimization:
+    optimized_allocation = optimize_budget_allocation(st.session_state.channels, st.session_state.overall_budget, st.session_state.channel_exposure_constraint)
+
+    # Display the results
+    st.markdown("---")
+    st.header("Optimized Budget Allocation")
+
+    for channel in optimized_allocation:
+        st.write(f"{channel['name']}: ${channel['budget']:.2f}")
