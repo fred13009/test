@@ -1,82 +1,96 @@
 import streamlit as st
+import pandas as pd
 import pulp
 
-# Initialize Streamlit app
-st.set_page_config(page_title="Advertising Budget Allocation", page_icon=None, layout="centered", initial_sidebar_state="expanded")
-
 st.title("Advertising Budget Allocation")
+st.header("Step 1: Enter Overall Budget")
 
-# Input overall budget
-overall_budget = st.number_input("Enter your overall budget:", min_value=0, value=1000, step=1, format="%d")
-st.markdown("---")
+overall_budget = st.number_input("Overall Budget", min_value=0.0, step=0.01)
 
-# Input optional channel exposure constraint
-use_channel_exposure_constraint = st.checkbox("Use channel exposure constraint")
-channel_exposure_constraint = None
-if use_channel_exposure_constraint:
-    channel_exposure_constraint = st.number_input("Enter minimum number of channels to use:", min_value=2, max_value=10, value=2, step=1, format="%d")
+next_step1 = st.button("Next")
 
-# Next step button
-if st.button("Next Step"):
-    st.session_state.overall_budget = overall_budget
-    st.session_state.channel_exposure_constraint = channel_exposure_constraint
-    st.session_state.next_step = True
+if next_step1:
+    st.header("Step 2: Enter Number of Channels")
+    
+    num_channels = st.number_input("Number of Channels", min_value=2, step=1)
+    
+    next_step2 = st.button("Next", key="next_step2")
 
-# Start of the second part
-def channel_input_form(channel_number):
-    channel_name = st.text_input(f"Channel {channel_number} Name:", key=f"channel_{channel_number}_name")
-    historical_roas = st.number_input(f"Channel {channel_number} Historical ROAS:", min_value=0.0, value=1.0, step=0.1, format="%.1f", key=f"channel_{channel_number}_roas")
-    return {
-        "name": channel_name,
-        "roas": historical_roas,
-    }
+if next_step1 and next_step2:
+    st.header("Step 3: Enter Channel Names and Historical ROAS")
+    
+    channel_data = {}
+    
+    for i in range(num_channels):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            channel_name = st.text_input(f"Channel {i+1} Name", key=f"channel_name_{i+1}")
+        with col2:
+            channel_roas = st.number_input(f"Channel {i+1} ROAS", min_value=0.0, step=0.01, value=1.1, key=f"channel_roas_{i+1}")
+        
+        channel_data[channel_name] = channel_roas
+    
+    next_step3 = st.button("Next", key="next_step3")
 
-if "next_step" in st.session_state and st.session_state.next_step:
-    st.markdown("---")
-    st.header("How many channels do you want to cover?")
-    st.session_state.num_channels = st.number_input("Number of channels:", min_value=2, max_value=10, value=2, step=1, format="%d")
+constraints = []
 
-    if st.button("Next Step Channels"):
-        st.session_state.next_step_channels = True
+if next_step1 and next_step2 and next_step3:
+    st.header("Step 4: Set Constraints")
 
-if "next_step_channels" in st.session_state and st.session_state.next_step_channels:
-    st.markdown("---")
-    st.header("Marketing Channels")
+    selected_channel = st.selectbox("Select Channel", options=list(channel_data.keys()))
+    constraint_type = st.selectbox("Select Constraint Type", options=["Minimum Budget Constraint", "Maximum Budget Constraint", "Minimum Revenue Constraint"])
 
-    channels = []
-    for i in range(1, st.session_state.num_channels + 1):
-        channel = channel_input_form(i)
-        channels.append(channel)
+    constraint_value = st.number_input("Enter Constraint Value", min_value=0.0, step=0.01)
 
-    # Move to the next part
-    if st.button("Next Step Constraints"):
-        st.session_state.channels = channels
-        st.session_state.next_step_constraints = True
+    add_constraint = st.button("Add Constraint")
+    submit_calculation = st.button("Submit for Calculation")
 
-# Constraint input
-if "next_step_constraints" in st.session_state and st.session_state.next_step_constraints:
-    st.markdown("---")
-    st.header("Marketing Channel Constraints")
+    if add_constraint:
+        constraints.append((selected_channel, constraint_type, constraint_value))
+        st.write(f"Added {constraint_type} for {selected_channel}: {constraint_value}")
 
-    if "constraints" not in st.session_state:
-        st.session_state.constraints = []
+def allocate_budget(channel_data, constraints, overall_budget):
+    prob = pulp.LpProblem("AdvertisingBudgetAllocation", pulp.LpMaximize)
 
-    if st.button("Set New Constraints"):
-        constraint_channel = st.selectbox("Select Channel", [channel["name"] for channel in st.session_state.channels])
-        constraint_type = st.selectbox("Constraint Type", ["Minimum Budget", "Maximum Budget", "Minimum Revenue"])
-        constraint_value = st.number_input("Constraint Value:", min_value=0, value=0, step=1, format="%d")
+    # Create budget allocation variables for each channel
+    budget_vars = pulp.LpVariable.dicts("Budget", channel_data.keys(), lowBound=0, cat='Continuous')
 
-        st.session_state.constraints.append({"channel": constraint_channel, "type": constraint_type, "value": constraint_value})
-        st.write(f"Added {constraint_type} constraint for {constraint_channel}: {constraint_value}")
+    # Add constraints
+    for channel, constraint_type, constraint_value in constraints:
+        if constraint_type == "Minimum Budget Constraint":
+            prob += budget_vars[channel] >= constraint_value
+        elif constraint_type == "Maximum Budget Constraint":
+            prob += budget_vars[channel] <= constraint_value
+        elif constraint_type == "Minimum Revenue Constraint":
+            prob += budget_vars[channel] * channel_data[channel] >= constraint_value
 
-    if st.button("Save Constraints"):
-        st.session_state.saved_constraints = True
+    # Add the overall budget constraint
+    prob += pulp.lpSum([budget_vars[channel] for channel in channel_data.keys()]) <= overall_budget
 
-    if st.button("Run Calculation"):
-        st.session_state.run_calculation = True
+    # Set the objective function to maximize overall revenue
+    prob += pulp.lpSum([budget_vars[channel] * channel_data[channel] for channel in channel_data.keys()])
 
-# Run calculation
-if "run_calculation" in st.session_state and st.session_state.run_calculation:
-    st.markdown("---")
-    st.header("Budget Allocation Results")
-    st.write("Here you would display the results of the optimization using the pulp library.")
+    # Solve the problem
+    prob.solve()
+
+    # Return the budget allocation and the expected revenue
+    budget_allocation = {channel: budget_vars[channel].varValue for channel in channel_data.keys()}
+    expected_revenue = pulp.value(prob.objective)
+
+    return budget_allocation, expected_revenue
+
+if next_step1 and next_step2 and next_step3 and submit_calculation:
+    budget_allocation, expected_revenue = allocate_budget(channel_data, constraints, overall_budget)
+
+    st.header("Optimized Budget Allocation")
+    st.write(pd.DataFrame(budget_allocation.items(), columns=["Channel", "Budget Allocation"]))
+
+    st.header("Expected Optimized Overall Revenue")
+    st.write(expected_revenue)
+
+    even_split_budget = overall_budget / num_channels
+    even_split_revenue = sum([even_split_budget * channel_data[channel] for channel in channel_data.keys()])
+    
+    st.header("Revenue if Budget was Split Evenly Across Channels")
+    st.write(even_split_revenue)
