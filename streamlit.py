@@ -14,6 +14,8 @@ def main():
     elif state.step == 2:
         step2(state)
     elif state.step == 3:
+        if "channel_data" not in state:
+            state.channel_data = {}
         step3(state)
     elif state.step == 4:
         step4(state)
@@ -34,7 +36,6 @@ def step2(state):
     if next_step2:
         state.num_channels = num_channels
         state.step = 3
-        state.channel_data = {}
 
 def step3(state):
     st.header("Step 3: Enter Channel Names and Historical ROAS")
