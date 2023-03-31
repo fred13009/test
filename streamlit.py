@@ -22,10 +22,11 @@ def main():
 
 def step1(state):
     st.header("Step 1: Enter Overall Budget")
-    state.overall_budget = st.number_input("Overall Budget", min_value=0.0, step=0.01)
+    overall_budget = st.number_input("Overall Budget", min_value=0.0, step=0.01)
 
     next_step1 = st.button("Next")
     if next_step1:
+        state.overall_budget = overall_budget
         state.step = 2
 
 def step2(state):
@@ -36,7 +37,7 @@ def step2(state):
     if next_step2:
         state.num_channels = num_channels
         state.step = 3
-        state.channel_data = {i: {} for i in range(1, num_channels + 1)}
+        state.channel_data = {i: {"name": "", "roas": 1.1} for i in range(1, num_channels + 1)}
 
 def step3(state):
     st.header("Step 3: Enter Channel Names and Historical ROAS")
