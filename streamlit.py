@@ -36,6 +36,7 @@ def step2(state):
     if next_step2:
         state.num_channels = num_channels
         state.step = 3
+        state.channel_data = {i: {} for i in range(1, num_channels + 1)}
 
 def step3(state):
     st.header("Step 3: Enter Channel Names and Historical ROAS")
