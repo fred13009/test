@@ -56,26 +56,22 @@ def step3(state):
 def step4(state):
     st.header("Step 4: Set Constraints")
 
-    channel_data = state['channel_data']
-    channels = [channel_data[i]['name'] for i in channel_data]
-
-    with st.form(key="step4_form"):
-        selected_channel = st.selectbox("Select Channel", options=channels)
+    with st.form("constraints_form"):
+        selected_channel = st.selectbox("Select Channel", options=[c['name'] for c in state['channel_data']])
         constraint_type = st.selectbox("Select Constraint Type", options=["Minimum Budget Constraint", "Maximum Budget Constraint", "Minimum Revenue Constraint"])
-
         constraint_value = st.number_input("Enter Constraint Value", min_value=0.0, step=0.01)
 
-        add_constraint = st.form_submit_button("Add Constraint")
+        add_constraint = st.form_submit_button("Set a New Constraint")
         submit_calculation = st.form_submit_button("Submit for Calculation")
 
     if add_constraint:
-        if 'constraints' not in state:
-            state['constraints'] = []
         state['constraints'].append((selected_channel, constraint_type, constraint_value))
         st.write(f"Added {constraint_type} for {selected_channel}: {constraint_value}")
+        st.experimental_rerun()
 
     if submit_calculation:
         state['step'] = 5
+        st.experimental_rerun()
 
 def step5(state):
     st.header("Optimized Budget Allocation")
