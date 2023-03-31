@@ -28,10 +28,11 @@ def step1(state):
 
 def step2(state):
     st.header("Step 2: Enter Number of Channels")
-    state.num_channels = st.number_input("Number of Channels", min_value=2, step=1)
+    num_channels = st.number_input("Number of Channels", min_value=2, step=1)
 
     next_step2 = st.button("Next")
     if next_step2:
+        state.num_channels = num_channels
         state.step = 3
         state.channel_data = {}
 
