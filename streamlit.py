@@ -1,5 +1,6 @@
 import streamlit as st
-import pulp
+from pulp import LpProblem, LpVariable, lpSum, LpMaximize, LpStatus, LpConstraint
+import pandas as pd
 
 # Initialize Streamlit app
 st.set_page_config(page_title="Advertising Budget Allocation", page_icon=None, layout="centered", initial_sidebar_state="expanded")
@@ -15,20 +16,14 @@ use_channel_exposure_constraint = st.checkbox("Use channel exposure constraint")
 channel_exposure_constraint = None
 if use_channel_exposure_constraint:
     channel_exposure_constraint = st.number_input("Enter minimum number of channels to use:", min_value=2, max_value=10, value=2, step=1, format="%d")
-    
+
 # Next step button
 if st.button("Next Step"):
     st.session_state.overall_budget = overall_budget
     st.session_state.channel_exposure_constraint = channel_exposure_constraint
     st.session_state.next_step = True
 
-if "next_step" in st.session_state and st.session_state.next_step:
-    st.markdown("---")
-    st.header("How many channels do you want to cover?")
-    st.session_state.num_channels = st.number_input("Number of channels:", min_value=2, max_value=10, value=2, step=1, format="%d")
-
-    if st.button("Next Step Channels"):
-        st.session_state.next_step_channels = True
+# Start of the second part
 
 def channel_input_form(channel_number):
     channel_name = st.text_input(f"Channel {channel_number} Name:", key=f"channel_{channel_number}_name")
@@ -47,6 +42,13 @@ def channel_input_form(channel_number):
         "min_revenue": min_revenue if min_revenue > 0 else None,
     }
 
+if "next_step" in st.session_state and st.session_state.next_step:
+    st.markdown("---")
+    st.header("How many channels do you want to cover?")
+    st.session_state.num_channels = st.number_input("Number of channels:", min_value=2, max_value=10, value=2, step=1, format="%d")
+
+    if st.button("Next Step Channels"):
+        st.session_state.next_step_channels = True
 
 if "next_step_channels" in st.session_state and st.session_state.next_step_channels:
     st.markdown("---")
@@ -57,65 +59,42 @@ if "next_step_channels" in st.session_state and st.session_state.next_step_chann
         channel = channel_input_form(i)
         channels.append(channel)
 
-    # Next step to run the optimization
-    if st.button("Run Optimization"):
-        st.session_state.channels = channels
-        st.session_state.run_optimization = True
+    if st.button("Run Calculations"):
+        # Budget optimization part
+        prob = LpProblem("Advertising Budget Allocation", LpMaximize)
 
-# Budget optimization part
-if st.button("Run Calculation"):
-    from pulp import LpProblem, LpMaximize, LpVariable, LpInteger, LpStatus, lpSum
+        # Initialize variables
+        allocation_vars = [LpVariable(f"allocation_{i}", lowBound=0) for i in range(st.session_state.num_channels)]
+        revenue_vars = [LpVariable(f"revenue_{i}", lowBound=0) for i in range(st.session_state.num_channels)]
 
-    # Create the LP problem
-    problem = LpProblem("BudgetAllocation", LpMaximize)
+        # Objective function
+        prob += lpSum(revenue_vars)
 
-    # Create LP variables
-    budget_vars = [LpVariable(f"Budget_Channel_{i}", lowBound=0, upBound=overall_budget, cat="Continuous") for i in range(len(channels))]
-    exposure_vars = [LpVariable(f"Exposure_Channel_{i}", lowBound=0, upBound=1, cat="Integer") for i in range(len(channels))]
+        # Constraints
+        prob += lpSum(allocation_vars) <= st.session_state.overall_budget
 
-    # Objective function: maximize total revenue
-    problem += lpSum([budget_vars[i] * channels[i]["roas"] for i in range(len(channels))])
+        for i, channel in enumerate(channels):
+            prob += allocation_vars[i] <= channel['max_budget'] if channel['max_budget'] is not None else 1e9
+            prob += allocation_vars[i] >= channel['min_budget'] if channel['min_budget'] is not None else 0
+            prob += revenue_vars[i] >= channel['min_revenue'] if channel['min_revenue'] is not None else 0
+            prob += revenue_vars[i] <= allocation_vars[i] * channel['roas']
 
-    # Overall budget constraint
-    problem += lpSum([budget_vars[i] for i in range(len(channels))]) <= overall_budget
+        if st.session_state.channel_exposure_constraint:
+            prob += lpSum([LpConstraint(var, cat='Binary') for var in allocation_vars]) >= st.session_state.channel_exposure_constraint
 
-    # Channel exposure constraint
-    if channel_exposure_constraint:
-        problem += lpSum([exposure_vars[i] for i in range(len(channels))]) >= channel_exposure_constraint
+        # Solve the optimization problem
+        prob.solve()
 
-    # Channel-specific constraints
-    for i, channel in enumerate(channels):
-        # Budget constraints
-        if channel["min_budget"]:
-            problem += budget_vars[i] >= channel["min_budget"] * exposure_vars[i]
-        if channel["max_budget"]:
-            problem += budget_vars[i] <= channel["max_budget"] * exposure_vars[i]
+        # Show results
+        st.markdown("---")
+        st.header("Optimal Budget Allocation")
+        if LpStatus[prob.status] == 'Optimal':
+            allocation_df = pd.DataFrame(columns=['Channel', 'Budget Allocation', 'Revenue'])
+            for i, channel in enumerate(channels):
+                allocation = allocation_vars[i].value()
+                revenue = revenue_vars[i].value()
+                allocation_df = allocation_df.append({'Channel': channel['name'], 'Budget Allocation': allocation, 'Revenue': revenue}, ignore_index=True)
+
+            st.write(allocation_df)
         else:
-            problem += budget_vars[i] <= overall_budget * exposure_vars[i]
-
-        # Minimum revenue constraint
-        if channel["min_revenue"]:
-            problem += budget_vars[i] * channels[i]["roas"] >= channel["min_revenue"] * exposure_vars[i]
-
-    # Solve the LP problem
-    problem.solve()
-
-    # Check the solution status
-    if LpStatus[problem.status] == "Optimal":
-        st.success("Optimal solution found.")
-    else:
-        st.error("No optimal solution found. Please review the constraints.")
-
-    # Display the results
-    st.markdown("---")
-    st.header("Budget Allocation Results")
-    for i, channel in enumerate(channels):
-        st.write(f"{channel['name']}: ${budget_vars[i].varValue:.2f}")
-
-    # Calculate the expected overall revenue
-    expected_revenue = sum([budget_vars[i].varValue * channels[i]["roas"] for i in range(len(channels))])
-    st.write(f"Expected Overall Revenue: ${expected_revenue:.2f}")
-
-    # Compare with evenly split budget
-    even_split_revenue = sum([(overall_budget / len(channels)) * channels[i]["roas"] for i in range(len(channels))])
-    st.write(f"Revenue if Budget Was Split Evenly: ${even_split_revenue:.2f}")
+            st.error("Optimization failed. Please check your constraints and try again.")
