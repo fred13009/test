@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import numpy as np  # Importing NumPy
+import numpy as np
 from scipy.optimize import linprog
 
 # Title and Introduction
@@ -17,8 +17,9 @@ for i in range(num_retailers):
     roi = st.number_input(f'Historical ROI for Retailer {i+1} (Revenue per Spend)', key=f'roi_{i}')
     min_spend = st.number_input(f'Minimum Spend for Retailer {i+1}', key=f'min_{i}', min_value=0.0)
     max_spend = st.number_input(f'Maximum Spend for Retailer {i+1}', key=f'max_{i}', min_value=0.0)
-    rev_threshold = st.number_input(f'Revenue Threshold for Retailer {i+1}', key=f'rev_{i}', min_value=0.0)
-    retailer_data.append((name, roi, min_spend, max_spend, rev_threshold))
+    min_revenue = st.number_input(f'Minimum Revenue for Retailer {i+1}', key=f'min_rev_{i}', min_value=0.0)
+    max_revenue = st.number_input(f'Maximum Revenue for Retailer {i+1}', key=f'max_rev_{i}', min_value=0.0)
+    retailer_data.append((name, roi, min_spend, max_spend, min_revenue, max_revenue))
 
 # Total Budget Input
 total_budget = st.number_input('Enter Total Advertising Budget', min_value=0.0)
@@ -28,27 +29,38 @@ def allocate_budget(retailer_data, total_budget):
     num_retailers = len(retailer_data)
 
     # Objective: Maximize total revenue (negative ROI because linprog does minimization)
-    c = [-roi for _, roi, _, _, _ in retailer_data]
+    c = [-roi for _, roi, _, _, _, _ in retailer_data]
 
     # Constraints
-    # Upper bounds for spends on each retailer
-    A_ub = np.identity(num_retailers)
-    b_ub = [max_spend if max_spend > 0 else 1e9 for _, _, _, max_spend, _ in retailer_data]
+    A = []
+    b = []
 
-    # Lower bounds for spends on each retailer
-    A_lb = -np.identity(num_retailers)
-    b_lb = [-min_spend for _, _, min_spend, _, _ in retailer_data]
+    # Spend and Revenue constraints for each retailer
+    for _, roi, min_spend, max_spend, min_revenue, max_revenue in retailer_data:
+        # Spend constraints
+        row = np.zeros(num_retailers)
+        row[i] = 1
+        if max_spend > 0:
+            A.append(row)
+            b.append(max_spend)
+        if min_spend > 0:
+            A.append(-row)
+            b.append(-min_spend)
+
+        # Revenue constraints
+        if max_revenue > 0:
+            A.append(-row * roi)
+            b.append(-min_revenue)
+        if min_revenue > 0:
+            A.append(row * roi)
+            b.append(max_revenue)
 
     # Total budget constraint
-    A_eq = [np.ones(num_retailers)]
-    b_eq = [total_budget]
-
-    # Combine constraints
-    A = np.vstack([A_ub, A_lb])
-    b = np.concatenate([b_ub, b_lb])
+    A.append(np.ones(num_retailers))
+    b.append(total_budget)
 
     # Optimization
-    res = linprog(c, A_ub=A, b_ub=b, A_eq=A_eq, b_eq=b_eq, method='highs')
+    res = linprog(c, A_ub=np.array(A), b_ub=np.array(b), method='highs')
 
     if res.success:
         return res.x
@@ -60,7 +72,7 @@ if st.button('Allocate Budget'):
     try:
         allocated_budgets = allocate_budget(retailer_data, total_budget)
         # Dataframe for displaying results
-        df = pd.DataFrame(retailer_data, columns=['Retailer', 'Historical ROI', 'Min Spend', 'Max Spend', 'Revenue Threshold'])
+        df = pd.DataFrame(retailer_data, columns=['Retailer', 'Historical ROI', 'Min Spend', 'Max Spend', 'Min Revenue', 'Max Revenue'])
         df['Allocated Budget'] = allocated_budgets
         df['Expected Revenue'] = df['Allocated Budget'] * df['Historical ROI']
 
