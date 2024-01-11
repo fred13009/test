@@ -1,8 +1,6 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-from sklearn.linear_model import LinearRegression
-import matplotlib.pyplot as plt
+from scipy.optimize import linprog
 
 # Title and Introduction
 st.title('Advanced Marketing Budget Allocator Tool for Multi-Retailer Online Advertising')
@@ -24,59 +22,58 @@ for i in range(num_retailers):
 # Total Budget Input
 total_budget = st.number_input('Enter Total Advertising Budget', min_value=0.0)
 
-# Function to perform linear regression-based allocation
+# Function to perform budget allocation with optimization
 def allocate_budget(retailer_data, total_budget):
-    # Preparing data for linear regression
-    X = []
-    y = []
-    constraints = []
-    for name, roi, min_spend, max_spend, rev_threshold in retailer_data:
-        X.append([roi])
-        y.append(rev_threshold)
-        constraints.append((min_spend, max_spend))
+    num_retailers = len(retailer_data)
 
-    # Linear Regression Model
-    model = LinearRegression()
-    model.fit(X, y)
-    predictions = model.predict(X)
+    # Objective: Maximize total revenue (negative ROI because linprog does minimization)
+    c = [-roi for _, roi, _, _, _ in retailer_data]
 
-    # Allocating budget based on model predictions and constraints
-    allocated_budget = np.array([max(min(max_spend if max_spend > 0 else float('inf'), prediction), min_spend) for prediction, (min_spend, max_spend) in zip(predictions, constraints)])
-    
-    # Check if the sum of minimum constraints exceeds total budget
-    if allocated_budget.sum() > total_budget:
-        return None, "Constraints exceed total budget. Adjust constraints or increase total budget."
+    # Constraints
+    # Upper bounds for spends on each retailer (if max_spend is zero, use a large number to mimic 'no upper limit')
+    A_ub = np.identity(num_retailers)
+    b_ub = [max_spend if max_spend > 0 else 1e9 for _, _, _, max_spend, _ in retailer_data]
 
-    # Adjusting the allocated budget to match the total budget
-    sum_allocated = allocated_budget.sum()
-    if sum_allocated != total_budget:
-        scale = total_budget / sum_allocated
-        allocated_budget *= scale
+    # Lower bounds for spends on each retailer
+    A_lb = -np.identity(num_retailers)
+    b_lb = [-min_spend for _, _, min_spend, _, _ in retailer_data]
 
-    return allocated_budget, None
+    # Total budget constraint
+    A_eq = [np.ones(num_retailers)]
+    b_eq = [total_budget]
+
+    # Combine constraints
+    A = np.vstack([A_ub, A_lb])
+    b = np.concatenate([b_ub, b_lb])
+
+    # Optimization
+    res = linprog(c, A_ub=A, b_ub=b, A_eq=A_eq, b_eq=b_eq, method='highs')
+
+    if res.success:
+        return res.x
+    else:
+        raise ValueError("Optimization failed: " + res.message)
 
 # Budget Allocation and Display Results
 if st.button('Allocate Budget'):
-    allocated_budget, warning_message = allocate_budget(retailer_data, total_budget)
-    
-    if warning_message:
-        st.warning(warning_message)
-    else:
+    try:
+        allocated_budgets = allocate_budget(retailer_data, total_budget)
         # Dataframe for displaying results
         df = pd.DataFrame(retailer_data, columns=['Retailer', 'Historical ROI', 'Min Spend', 'Max Spend', 'Revenue Threshold'])
-        df['Allocated Budget'] = allocated_budget
+        df['Allocated Budget'] = allocated_budgets
         df['Expected Revenue'] = df['Allocated Budget'] * df['Historical ROI']
 
         st.dataframe(df)
 
-        # Summary Dashboard
+        # Summary and Visualization
         st.subheader('Summary Dashboard')
-        fig, ax = plt.subplots()
-        ax.bar(df['Retailer'], df['Allocated Budget'])
-        st.pyplot(fig)
+        st.bar_chart(df[['Retailer', 'Allocated Budget']].set_index('Retailer'))
 
         # Total expected revenue
         total_revenue = df['Expected Revenue'].sum()
         st.write(f'Total Expected Revenue: ${total_revenue:.2f}')
+
+    except Exception as e:
+        st.error(f'Error in allocation: {e}')
 
 # End of Streamlit App Code
