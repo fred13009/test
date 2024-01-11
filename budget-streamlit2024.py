@@ -33,7 +33,11 @@ def allocate_budget(retailer_data, total_budget):
     for name, roi, min_spend, max_spend, rev_threshold in retailer_data:
         X.append([roi])
         y.append(rev_threshold)
-        constraints.append((min_spend, max_spend))
+        # Handling cases where there are no constraints
+        if min_spend == 0 and max_spend == 0:
+            constraints.append((None, None))
+        else:
+            constraints.append((min_spend, max_spend))
 
     # Linear Regression Model
     model = LinearRegression()
@@ -44,14 +48,20 @@ def allocate_budget(retailer_data, total_budget):
     allocated_budget = []
     for i, prediction in enumerate(predictions):
         min_spend, max_spend = constraints[i]
-        budget = min(max(min_spend, prediction), max_spend)
+        budget = prediction
+        if min_spend is not None:
+            budget = max(min_spend, budget)
+        if max_spend is not None:
+            budget = min(max_spend, budget)
         allocated_budget.append(budget)
 
     # Adjusting the allocated budget to match the total budget
     sum_allocated = sum(allocated_budget)
-    if sum_allocated != total_budget:
+    if sum_allocated > 0:
         scale = total_budget / sum_allocated
         allocated_budget = [budget * scale for budget in allocated_budget]
+    else:
+        raise ValueError("Allocated budget sum is zero. Adjust constraints or ROI values.")
 
     return allocated_budget
 
