@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np  # Importing NumPy
 from scipy.optimize import linprog
 
 # Title and Introduction
@@ -30,7 +31,7 @@ def allocate_budget(retailer_data, total_budget):
     c = [-roi for _, roi, _, _, _ in retailer_data]
 
     # Constraints
-    # Upper bounds for spends on each retailer (if max_spend is zero, use a large number to mimic 'no upper limit')
+    # Upper bounds for spends on each retailer
     A_ub = np.identity(num_retailers)
     b_ub = [max_spend if max_spend > 0 else 1e9 for _, _, _, max_spend, _ in retailer_data]
 
