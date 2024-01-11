@@ -33,42 +33,35 @@ def allocate_budget(retailer_data, total_budget):
     for name, roi, min_spend, max_spend, rev_threshold in retailer_data:
         X.append([roi])
         y.append(rev_threshold)
-        # Handling cases where there are no constraints
-        if min_spend == 0 and max_spend == 0:
-            constraints.append((None, None))
-        else:
-            constraints.append((min_spend, max_spend))
+        constraints.append((min_spend, max_spend))
 
     # Linear Regression Model
     model = LinearRegression()
     model.fit(X, y)
     predictions = model.predict(X)
 
-    # Allocating budget based on model predictions
-    allocated_budget = []
-    for i, prediction in enumerate(predictions):
-        min_spend, max_spend = constraints[i]
-        budget = prediction
-        if min_spend is not None:
-            budget = max(min_spend, budget)
-        if max_spend is not None:
-            budget = min(max_spend, budget)
-        allocated_budget.append(budget)
+    # Allocating budget based on model predictions and constraints
+    allocated_budget = np.array([max(min(max_spend if max_spend > 0 else float('inf'), prediction), min_spend) for prediction, (min_spend, max_spend) in zip(predictions, constraints)])
+    
+    # Check if the sum of minimum constraints exceeds total budget
+    if allocated_budget.sum() > total_budget:
+        return None, "Constraints exceed total budget. Adjust constraints or increase total budget."
 
     # Adjusting the allocated budget to match the total budget
-    sum_allocated = sum(allocated_budget)
-    if sum_allocated > 0:
+    sum_allocated = allocated_budget.sum()
+    if sum_allocated != total_budget:
         scale = total_budget / sum_allocated
-        allocated_budget = [budget * scale for budget in allocated_budget]
-    else:
-        raise ValueError("Allocated budget sum is zero. Adjust constraints or ROI values.")
+        allocated_budget *= scale
 
-    return allocated_budget
+    return allocated_budget, None
 
 # Budget Allocation and Display Results
 if st.button('Allocate Budget'):
-    try:
-        allocated_budget = allocate_budget(retailer_data, total_budget)
+    allocated_budget, warning_message = allocate_budget(retailer_data, total_budget)
+    
+    if warning_message:
+        st.warning(warning_message)
+    else:
         # Dataframe for displaying results
         df = pd.DataFrame(retailer_data, columns=['Retailer', 'Historical ROI', 'Min Spend', 'Max Spend', 'Revenue Threshold'])
         df['Allocated Budget'] = allocated_budget
@@ -85,8 +78,5 @@ if st.button('Allocate Budget'):
         # Total expected revenue
         total_revenue = df['Expected Revenue'].sum()
         st.write(f'Total Expected Revenue: ${total_revenue:.2f}')
-
-    except Exception as e:
-        st.error(f'Error in allocation: {e}')
 
 # End of Streamlit App Code
